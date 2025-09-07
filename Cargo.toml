@@ -10,6 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
+crossterm = "0.28"
+ctrlc = "3.4"
 console = "0.15"
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 indicatif = "0.17"
@@ -25,7 +27,15 @@ which = "6.0"
 similar = { version = "2.4", features = ["inline"] }
 portable-pty = "0.8"
 chrono = { version = "0.4", features = ["clock"] }
-tokio = { version = "1.37", features = ["rt-multi-thread", "macros", "process", "io-util", "signal"] }
+term_size = { version = "1.0.0-beta1" }
+tokio = { version = "1.37", features = ["rt-multi-thread", "macros", "process", "io-util", "signal", "fs"] }
+tokio-stream = { version = "0.1", features = ["io-util"] }
+futures = "0.3"
+futures-core = "0.3"
+self_update = "0.31"
+git2 = "0.17"
+log = "0.4"
+walkdir = "2.5"
 
 [profile.release]
 lto = true

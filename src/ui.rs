@@ -1,8 +1,16 @@
+use std::io::{self, Write};
 use std::path::Path;
 use std::time::Duration;
-use std::io::{self, Write};
+
+use crossterm::style::{Color, Stylize};
+
+use indicatif::{ProgressBar, ProgressStyle};
+
+use term_size;
 
 use crate::runner;
+
+#[allow(dead_code)]
 
 /// Prints a decorative boxed header showing the command being executed and the
 /// current working directory. This is used by the `/run` and `/test` commands
@@ -32,10 +40,11 @@ pub fn boxed_header(cmd: &str, cwd: &Path) {
         format!("|{}{}|", content, " ".repeat(padding))
     };
 
-    println!("{}", top_bottom);
-    println!("{}", pad_line(line_cmd));
-    println!("{}", pad_line(line_dir));
-    println!("{}", top_bottom);
+    // Render with colors
+    println!("{}", top_bottom.clone().with(Color::Cyan));
+    println!("{}", pad_line(line_cmd).with(Color::Green));
+    println!("{}", pad_line(line_dir).with(Color::Yellow));
+    println!("{}", top_bottom.clone().with(Color::Cyan));
 }
 
 /// Prints a concise status line after a command finishes, showing the exit
@@ -47,7 +56,16 @@ pub fn boxed_header(cmd: &str, cwd: &Path) {
 /// ```
 pub fn print_status(exit_code: i32, duration: Duration) {
     let secs = duration.as_secs_f64();
-    println!("Exit code: {} | Elapsed: {:.3}s", exit_code, secs);
+    let exit_col = if exit_code == 0 {
+        Color::Green
+    } else {
+        Color::Red
+    };
+    println!(
+        "{} | {}",
+        format!("Exit code: {}", exit_code).with(exit_col),
+        format!("Elapsed: {:.3}s", secs).with(Color::Cyan)
+    );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -62,7 +80,7 @@ pub fn print_separator() {
         Some((w, _)) => w,
         None => 80,
     };
-    println!("{}", "─".repeat(width));
+    println!("{}", "─".repeat(width).with(Color::DarkGrey));
 }
 
 /// Prints a message from the system (e.g., the tool) with a clear label and
@@ -71,7 +89,7 @@ pub fn print_system_message(message: &str) {
     print_separator();
     for (i, line) in message.lines().enumerate() {
         if i == 0 {
-            println!("🤖 {}", line);
+            println!("{} {}", "🤖".with(Color::Magenta), line);
         } else {
             println!("   {}", line);
         }
@@ -84,7 +102,7 @@ pub fn print_user_message(message: &str) {
     print_separator();
     for (i, line) in message.lines().enumerate() {
         if i == 0 {
-            println!("🧑 {}", line);
+            println!("{} {}", "🧑".with(Color::Blue), line);
         } else {
             println!("   {}", line);
         }
@@ -92,15 +110,28 @@ pub fn print_user_message(message: &str) {
     print_separator();
 }
 
+/// Renders a heading (e.g., section title) in bold cyan.
+pub fn render_heading(text: &str) {
+    println!("\n{}", text.bold().with(Color::Cyan));
+}
+
+/// Renders a generic status line in green.
+pub fn render_status(text: &str) {
+    println!("{}", text.with(Color::Green));
+}
+
+/// Renders a prompt string in yellow without a trailing newline and flushes stdout.
+pub fn render_prompt(prompt: &str) {
+    print!("{} ", prompt.bold().with(Color::Yellow));
+    let _ = io::stdout().flush();
+}
+
 /// Prompts the user for input, displaying the given prompt text. The function
 /// trims whitespace and repeats the prompt until a non‑empty line is entered,
 /// handling `Ctrl‑C` gracefully by returning an empty string.
 pub fn prompt_user(prompt: &str) -> String {
     loop {
-        // Show the prompt without a newline and flush stdout so the user sees it.
-        print!("{} ", prompt);
-        let _ = io::stdout().flush();
-
+        render_prompt(prompt);
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
             Ok(0) => {
@@ -123,17 +154,72 @@ pub fn prompt_user(prompt: &str) -> String {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         Optional dependency note                           */
+/*                         Simple UI convenience wrappers                     */
 /* -------------------------------------------------------------------------- */
 
-/*
-The `print_separator` function uses the `term_size` crate to adapt the line
-length to the current terminal width. If you prefer not to add an external
-dependency, you can replace the call with a fixed width, e.g.:
+/// Simple wrapper that prints a line of text followed by a newline.
+pub fn print(msg: &str) {
+    println!("{}", msg);
+}
 
-let width = 80;
-println!("{}", "─".repeat(width));
-*/
+/// Prints a banner shown at program start.
+pub fn banner() {
+    // A simple banner; feel free to replace with something fancier.
+    println!("{}", "=== Shellcraft ===".with(Color::Cyan).bold());
+}
+
+/// Prints an informational message in cyan.
+pub fn info(msg: &str) {
+    println!("{}", msg.with(Color::Cyan));
+}
+
+/// Prints a success message in green.
+pub fn success(msg: &str) {
+    println!("{}", msg.with(Color::Green));
+}
+
+/// Prints an error message in red (to stderr).
+pub fn error(msg: &str) {
+    eprintln!("{}", msg.with(Color::Red));
+}
+
+/// Returns a spinner progress bar with the given message.
+pub fn spinner(message: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_message(message.to_string());
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner} {msg}")
+            .unwrap(),
+    );
+    pb
+}
+
+/// Reads multiline input from stdin until a line containing only `/end` is
+/// entered. Returns the collected text (excluding the terminating line). An
+/// empty string is returned on EOF or error.
+pub fn read_multiline_input() -> io::Result<String> {
+    let mut buffer = String::new();
+    loop {
+        let mut line = String::new();
+        let bytes = io::stdin().read_line(&mut line)?;
+        if bytes == 0 {
+            // EOF
+            break;
+        }
+        let trimmed = line.trim_end_matches(&['\n', '\r'][..]);
+        if trimmed == "/end" {
+            break;
+        }
+        buffer.push_str(trimmed);
+        buffer.push('\n');
+    }
+    Ok(buffer)
+}
+
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
 
 /// Prompt the user for a terminal command, execute it via `runner::run_command`,
 /// and display the resulting output or error in the UI.
@@ -158,5 +244,30 @@ pub fn prompt_and_run_terminal_command() {
             // Show the error.
             print_system_message(&format!("Command failed: {}", e));
         }
+    }
+}
+
+/// Starts a simple interactive REPL loop. The user types a line, which is
+/// echoed back as a system response. Typing `exit` (case‑insensitive) quits
+/// the loop.
+pub fn start_repl() {
+    render_heading("Interactive REPL (type 'exit' to quit)");
+    loop {
+        let input = prompt_user(">>>");
+
+        if input.eq_ignore_ascii_case("exit") {
+            render_status("Exiting REPL.");
+            break;
+        }
+
+        if input.is_empty() {
+            continue;
+        }
+
+        // Show what the user typed.
+        print_user_message(&input);
+
+        // Placeholder for real processing – echo back for now.
+        print_system_message(&format!("You said: {}", input));
     }
 }

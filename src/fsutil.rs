@@ -9,7 +9,13 @@ use std::sync::Mutex;
 static IGNORE_PATTERNS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| {
     Mutex::new(
         vec![
-            "node_modules", "dist", "build", "target", ".git", ".next", ".turbo",
+            "node_modules",
+            "dist",
+            "build",
+            "target",
+            ".git",
+            ".next",
+            ".turbo",
         ]
         .into_iter()
         .map(String::from)
@@ -41,8 +47,12 @@ pub fn file_inventory(root: &Path) -> Result<Vec<FileMeta>> {
             Err(_) => continue,
         };
         let p = dent.path();
-        if !p.is_file() { continue; }
-        if contains_any_segment_str(p, &ignore) { continue; }
+        if !p.is_file() {
+            continue;
+        }
+        if contains_any_segment_str(p, &ignore) {
+            continue;
+        }
 
         let rel = pathdiff::diff_paths(p, root).unwrap_or_else(|| p.to_path_buf());
         let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
@@ -57,6 +67,7 @@ pub fn file_inventory(root: &Path) -> Result<Vec<FileMeta>> {
     Ok(out)
 }
 
+#[allow(dead_code)]
 pub fn list_project_files(root: &Path) -> Result<Vec<PathBuf>> {
     let inv = file_inventory(root)?;
     Ok(inv.into_iter().map(|m| root.join(m.path)).collect())
@@ -88,6 +99,7 @@ pub fn atomic_write(p: &Path, content: &str) -> Result<()> {
 }
 
 /// Merge additional ignore patterns at runtime.
+#[allow(dead_code)]
 pub fn merge_ignore_patterns(new: &[&str]) {
     let mut guard = IGNORE_PATTERNS.lock().unwrap();
     for &pat in new {

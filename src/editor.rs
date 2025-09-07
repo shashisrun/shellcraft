@@ -5,6 +5,7 @@ use which::which;
 
 use crate::fsutil;
 
+#[allow(dead_code)]
 pub fn guess_editor() -> String {
     env::var("VISUAL")
         .or_else(|_| env::var("EDITOR"))
@@ -21,6 +22,9 @@ pub fn guess_editor() -> String {
         .unwrap_or_else(|| "vi".into())
 }
 
+// This function is intentionally kept for future editor integration.
+// It may not be used currently, so we silence dead‑code warnings.
+#[allow(dead_code)]
 pub fn open_in_editor(initial: &str, _hint_name: &str) -> Result<String> {
     let mut tmp = NamedTempFile::new()?;
     tmp.write_all(initial.as_bytes())?;
@@ -28,10 +32,14 @@ pub fn open_in_editor(initial: &str, _hint_name: &str) -> Result<String> {
 
     let editor = guess_editor();
     let mut cmd = Command::new(&editor);
-    if editor.contains("code") { cmd.arg("--wait"); }
+    if editor.contains("code") {
+        cmd.arg("--wait");
+    }
     cmd.arg(&path);
 
-    let status = cmd.status().with_context(|| format!("launching editor: {}", editor))?;
+    let status = cmd
+        .status()
+        .with_context(|| format!("launching editor: {}", editor))?;
     if !status.success() {
         bail!("editor exited with non-zero status");
     }
@@ -41,9 +49,14 @@ pub fn open_in_editor(initial: &str, _hint_name: &str) -> Result<String> {
 }
 
 /// `/ignore` support
+// This function is intentionally kept for future editor integration.
+// It may not be used currently, so we silence dead‑code warnings.
+#[allow(dead_code)]
 pub fn handle_ignore_command(arg_str: &str) -> Result<()> {
     let patterns: Vec<String> = arg_str.split_whitespace().map(|s| s.to_string()).collect();
-    if patterns.is_empty() { bail!("no ignore patterns provided"); }
+    if patterns.is_empty() {
+        bail!("no ignore patterns provided");
+    }
 
     // convert Vec<String> → Vec<&str>
     let refs: Vec<&str> = patterns.iter().map(|s| s.as_str()).collect();
@@ -51,7 +64,7 @@ pub fn handle_ignore_command(arg_str: &str) -> Result<()> {
     Ok(())
 }
 
-/// Execute ad-hoc code snippets or files.
+/// Execute ad‑hoc code snippets or files.
 /// Shebang → runs interpreter; otherwise compiles as Rust via `rustc`.
 pub fn execute_code(code: &str) -> Result<String, std::io::Error> {
     let dir = tempfile::tempdir()?;
@@ -79,7 +92,11 @@ pub fn execute_code(code: &str) -> Result<String, std::io::Error> {
         return Ok(combined);
     }
 
-    let bin_name = if cfg!(windows) { "code_bin.exe" } else { "code_bin" };
+    let bin_name = if cfg!(windows) {
+        "code_bin.exe"
+    } else {
+        "code_bin"
+    };
     let bin_path = dir.path().join(bin_name);
 
     let compile_output = std::process::Command::new("rustc")

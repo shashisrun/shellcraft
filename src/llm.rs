@@ -29,9 +29,7 @@ fn current_model_id() -> String {
 }
 
 pub fn set_model_id(new_id: &str) {
-    *MODEL_ID
-        .write()
-        .expect("MODEL_ID poisoned") = new_id.to_string();
+    *MODEL_ID.write().expect("MODEL_ID poisoned") = new_id.to_string();
 }
 
 /// -------- Endpoint & key --------
@@ -102,8 +100,14 @@ pub async fn chat_text(system: &str, user: &str) -> Result<String> {
     let req = ChatRequest {
         model: &model,
         messages: vec![
-            ChatMessage { role: "system", content: system },
-            ChatMessage { role: "user", content: user },
+            ChatMessage {
+                role: "system",
+                content: system,
+            },
+            ChatMessage {
+                role: "user",
+                content: user,
+            },
         ],
         temperature: Some(0.2),
         max_tokens: None,
@@ -125,8 +129,7 @@ pub async fn chat_text(system: &str, user: &str) -> Result<String> {
         return Err(anyhow!("LLM error {}: {}", status.as_u16(), text));
     }
 
-    let parsed: ChatResponse =
-        serde_json::from_str(&text).context("LLM JSON decode failed")?;
+    let parsed: ChatResponse = serde_json::from_str(&text).context("LLM JSON decode failed")?;
     let out = parsed
         .choices
         .get(0)
