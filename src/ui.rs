@@ -1,14 +1,32 @@
 use std::io::{self, Write};
 use std::path::Path;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant, SystemTime};
 
 use crossterm::style::{Color, Stylize};
 
 use indicatif::{ProgressBar, ProgressStyle};
 
+use once_cell::sync::Lazy;
 use term_size;
 
 use crate::runner;
+
+/// Convert an `Instant` to a `SystemTime` by offsetting from the current time.
+/// This provides an approximate wall‑clock timestamp for reporting purposes.
+fn instant_to_system_time(instant: Instant) -> SystemTime {
+    let now_instant = Instant::now();
+    let now_system = SystemTime::now();
+    if now_instant >= instant {
+        now_system
+            .checked_sub(now_instant.duration_since(instant))
+            .unwrap_or(now_system)
+    } else {
+        now_system
+            .checked_add(instant.duration_since(now_instant))
+            .unwrap_or(now_system)
+    }
+}
 
 #[allow(dead_code)]
 
@@ -269,5 +287,349 @@ pub fn start_repl() {
 
         // Placeholder for real processing – echo back for now.
         print_system_message(&format!("You said: {}", input));
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Observability / Reporting                         */
+/* -------------------------------------------------------------------------- */
+
+/// A single timeline entry describing a task execution.
+#[derive(Debug, Clone)]
+struct TimelineEntry {
+    start: Instant,
+    end: Instant,
+    agent: String,
+    llm: String,
+    tokens: u64,
+    verdict: String,
+}
+
+/// Global timeline storage.  Mutex protects concurrent writes from async contexts.
+static TIMELINE: Lazy<Mutex<Vec<TimelineEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// Record a completed task in the timeline.
+///
+/// # Arguments
+///
+/// * `start` – When the task started.
+/// * `end` – When the task finished.
+/// * `agent` – Identifier of the agent that performed the task.
+/// * `llm` – Name of the LLM used (if any).
+/// * `tokens` – Number of tokens consumed.
+/// * `verdict` – Short outcome description (e.g., "success", "failed").
+pub fn record_task(
+    start: Instant,
+    end: Instant,
+    agent: &str,
+    llm: &str,
+    tokens: u64,
+    verdict: &str,
+) {
+    let entry = TimelineEntry {
+        start,
+        end,
+        agent: agent.to_string(),
+        llm: llm.to_string(),
+        tokens,
+        verdict: verdict.to_string(),
+    };
+    let mut timeline = TIMELINE.lock().unwrap();
+    timeline.push(entry);
+}
+
+/// Generate a markdown report from the collected timeline.
+///
+/// The report includes:
+/// * Goal and a snippet of the plan.
+/// * A table of task outcomes.
+/// * File change statistics (placeholder).
+/// * Runtime & token totals per LLM provider.
+/// * Open risks / manual follow‑ups (placeholder).
+pub fn generate_report(goal: &str, plan_snippet: &str) -> String {
+    let timeline = TIMELINE.lock().unwrap();
+
+    // Compute aggregates.
+    let total_duration = timeline
+        .iter()
+        .map(|e| e.end.duration_since(e.start))
+        .fold(Duration::ZERO, |acc, d| acc + d);
+
+    let mut tokens_per_llm = std::collections::HashMap::<String, u64>::new();
+    for e in timeline.iter() {
+        *tokens_per_llm.entry(e.llm.clone()).or_insert(0) += e.tokens;
+    }
+
+    // Header.
+    let mut md = String::new();
+    md.push_str(&format!("# Goal\n\n{}\n\n", goal));
+    md.push_str("## Plan snippet\n\n```text\n");
+    md.push_str(plan_snippet);
+    md.push_str("\n```\n\n");
+
+    // Timeline table.
+    md.push_str("## Timeline\n\n");
+    md.push_str("| Start | End | Duration (s) | Agent | LLM | Tokens | Verdict |\n");
+    md.push_str("|-------|-----|--------------|-------|-----|--------|---------|\n");
+    for e in timeline.iter() {
+        let start = humantime::format_rfc3339(instant_to_system_time(e.start));
+        let end = humantime::format_rfc3339(instant_to_system_time(e.end));
+        let dur = e.end.duration_since(e.start).as_secs_f64();
+        md.push_str(&format!(
+            "| {} | {} | {:.3} | {} | {} | {} | {} |\n",
+            start, end, dur, e.agent, e.llm, e.tokens, e.verdict
+        ));
+    }
+    md.push('\n');
+
+    // Placeholder for file changes.
+    md.push_str("## Files changed\n\n");
+    md.push_str("_File change statistics would appear here (e.g., `git diff --stat`)._\n\n");
+
+    // Runtime & token totals.
+    md.push_str("## Runtime & Token totals per provider\n\n");
+    md.push_str("| LLM Provider | Tokens |\n");
+    md.push_str("|--------------|--------|\n");
+    for (llm, tokens) in tokens_per_llm.iter() {
+        md.push_str(&format!("| {} | {} |\n", llm, tokens));
+    }
+    md.push_str(&format!(
+        "\n**Total runtime:** {:.3} s\n\n",
+        total_duration.as_secs_f64()
+    ));
+
+    // Open risks / manual follow‑ups.
+    md.push_str("## Open risks / manual follow‑ups\n\n");
+    md.push_str("_List any remaining risks or actions that require human attention._\n");
+
+    md
+}
+
+/// Print the report to stdout and also copy it to the clipboard (if possible).
+pub fn report_command(goal: &str, plan_snippet: &str) {
+    let report = generate_report(goal, plan_snippet);
+    // Print to stdout.
+    println!("{}", report);
+
+    // Attempt to copy to clipboard using the `arboard` crate.
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    {
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(report.clone());
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Power‑toggle Settings                              */
+/* -------------------------------------------------------------------------- */
+
+/// Runtime‑adjustable settings that control the agent's behaviour.
+#[derive(Debug, Clone)]
+struct Settings {
+    /// If true, the agent will ask for confirmation before executing
+    /// potentially destructive commands (e.g., `git reset --hard`).
+    ask_before_destructive: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            ask_before_destructive: true,
+        }
+    }
+}
+
+/// Global mutable settings protected by a mutex.
+static SETTINGS: Lazy<Mutex<Settings>> = Lazy::new(|| Mutex::new(Settings::default()));
+
+/// Retrieve a copy of the current settings.
+pub fn get_settings() -> Settings {
+    SETTINGS.lock().unwrap().clone()
+}
+
+/// Update the `ask_before_destructive` flag.
+pub fn set_ask_before_destructive(value: bool) {
+    let mut s = SETTINGS.lock().unwrap();
+    s.ask_before_destructive = value;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         UI Helper Functions                                 */
+/* -------------------------------------------------------------------------- */
+
+/// Print a minimal help message with the available power‑toggle commands.
+pub fn print_help() {
+    render_heading("Help – Power Toggles & Commands");
+    println!(
+        "{} – Toggle confirmation before destructive commands.\n    Usage: /toggle ask_before_destructive [on|off]",
+        "/toggle".with(Color::Magenta)
+    );
+    println!("\nCurrent settings:");
+    let s = get_settings();
+    let status = if s.ask_before_destructive {
+        "on"
+    } else {
+        "off"
+    };
+    println!("  ask_before_destructive: {}", status);
+    println!("\nOther commands:");
+    println!("  /report   – Generate a markdown report of the session.");
+    println!("  /timeline – Show a concise timeline of executed tasks.");
+    println!("  /review   – Run rustfmt and clippy on the current project.");
+    println!("  /help     – Show this help message.");
+}
+
+/// Suggest possible actions for purely informational inputs.
+pub fn suggest_actions() {
+    render_status("Suggested actions: build, test, lint");
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Reviewer Agent                                       */
+/* -------------------------------------------------------------------------- */
+
+/// Runs `cargo fmt -- --check` and `cargo clippy -- -D warnings` on the given
+/// project directory, reports the results, and records a timeline entry.
+///
+/// This provides a quick code‑style and lint check without involving an LLM.
+pub fn reviewer_agent(project_path: &Path) {
+    let original_dir = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            error(&format!("Failed to get current directory: {}", e));
+            return;
+        }
+    };
+
+    if let Err(e) = std::env::set_current_dir(project_path) {
+        error(&format!(
+            "Failed to change directory to {}: {}",
+            project_path.display(),
+            e
+        ));
+        return;
+    }
+
+    let start = Instant::now();
+    let mut verdict = "success";
+
+    // Run rustfmt check.
+    match runner::run_command("cargo fmt -- --check") {
+        Ok(output) => {
+            print_system_message(&format!("rustfmt check passed:\n{}", output));
+        }
+        Err(e) => {
+            verdict = "rustfmt failed";
+            print_system_message(&format!("rustfmt check failed:\n{}", e));
+        }
+    }
+
+    // Run clippy.
+    match runner::run_command("cargo clippy -- -D warnings") {
+        Ok(output) => {
+            print_system_message(&format!("clippy passed:\n{}", output));
+        }
+        Err(e) => {
+            verdict = if verdict == "success" {
+                "clippy failed"
+            } else {
+                "rustfmt & clippy failed"
+            };
+            print_system_message(&format!("clippy failed:\n{}", e));
+        }
+    }
+
+    let end = Instant::now();
+
+    // Restore original working directory.
+    let _ = std::env::set_current_dir(original_dir);
+
+    record_task(start, end, "ReviewerAgent", "none", 0, verdict);
+    render_status(&format!(
+        "ReviewerAgent completed with verdict: {}",
+        verdict
+    ));
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Timeline Display                                      */
+/* -------------------------------------------------------------------------- */
+
+/// Prints a concise, human‑readable timeline of all recorded tasks.
+pub fn display_timeline() {
+    let timeline = TIMELINE.lock().unwrap();
+    if timeline.is_empty() {
+        render_status("No timeline entries recorded yet.");
+        return;
+    }
+
+    println!("\n{}", "=== Timeline ===".with(Color::Cyan).bold());
+    for e in timeline.iter() {
+        let start = humantime::format_rfc3339(instant_to_system_time(e.start));
+        let end = humantime::format_rfc3339(instant_to_system_time(e.end));
+        let dur = e.end.duration_since(e.start).as_secs_f64();
+        println!(
+            "{} → {} ({:.3}s) | Agent: {} | Verdict: {}",
+            start, end, dur, e.agent, e.verdict
+        );
+    }
+    println!();
+}
+
+/* -------------------------------------------------------------------------- */
+/*                         Command Dispatcher                                   */
+/* -------------------------------------------------------------------------- */
+
+/// Simple command dispatcher for UI/CLI input. Recognises `/report`, `/help`,
+/// `/timeline`, `/review`, and `/toggle` commands. Other inputs are ignored here
+/// and can be handled elsewhere (e.g., by the chat‑first agent logic).
+pub fn handle_ui_command(input: &str, goal: &str, plan_snippet: &str) {
+    match input.trim() {
+        "/report" => {
+            report_command(goal, plan_snippet);
+        }
+        "/timeline" => {
+            display_timeline();
+        }
+        "/review" => {
+            // Run reviewer on the current working directory.
+            if let Ok(cwd) = std::env::current_dir() {
+                reviewer_agent(&cwd);
+            } else {
+                error("Unable to determine current directory for review.");
+            }
+        }
+        "/help" => {
+            print_help();
+        }
+        cmd if cmd.starts_with("/toggle") => {
+            // Expected format: /toggle <key> <on|off>
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.len() == 3 {
+                let key = parts[1];
+                let value = parts[2];
+                match (key, value) {
+                    ("ask_before_destructive", "on") => {
+                        set_ask_before_destructive(true);
+                        render_status("ask_before_destructive set to on");
+                    }
+                    ("ask_before_destructive", "off") => {
+                        set_ask_before_destructive(false);
+                        render_status("ask_before_destructive set to off");
+                    }
+                    _ => {
+                        render_status(
+                            "Unknown toggle or value. Use: /toggle ask_before_destructive [on|off]",
+                        );
+                    }
+                }
+            } else {
+                render_status("Invalid toggle command. Usage: /toggle <key> <on|off>");
+            }
+        }
+        _ => {
+            // No special handling; could be routed to other UI actions.
+        }
     }
 }

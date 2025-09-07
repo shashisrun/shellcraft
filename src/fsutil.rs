@@ -108,3 +108,63 @@ pub fn merge_ignore_patterns(new: &[&str]) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Project type detection helpers
+// ---------------------------------------------------------------------------
+
+/// Returns true if the given directory looks like a Cargo (Rust) project.
+pub fn is_cargo_project(root: &Path) -> bool {
+    root.join("Cargo.toml").is_file()
+}
+
+/// Returns true if the given directory looks like an NPM/Yarn/PNPM (JavaScript) project.
+pub fn is_npm_project(root: &Path) -> bool {
+    root.join("package.json").is_file()
+        || root.join("yarn.lock").is_file()
+        || root.join("pnpm-lock.yaml").is_file()
+        || root.join("pnpm-lock.yml").is_file()
+}
+
+/// Returns true if the given directory looks like a Python project.
+pub fn is_python_project(root: &Path) -> bool {
+    root.join("pyproject.toml").is_file()
+        || root.join("requirements.txt").is_file()
+        || root.join("setup.py").is_file()
+}
+
+/// Returns true if the given directory looks like a Go project.
+pub fn is_go_project(root: &Path) -> bool {
+    root.join("go.mod").is_file()
+}
+
+/// Returns true if the given directory looks like a Maven (Java) project.
+pub fn is_maven_project(root: &Path) -> bool {
+    root.join("pom.xml").is_file()
+}
+
+/// Detects the tool family for a given project directory.
+///
+/// The returned string is one of:
+/// - "cargo"
+/// - "npm"
+/// - "python"
+/// - "go"
+/// - "maven"
+///
+/// Returns `None` if the project type cannot be determined.
+pub fn detect_tool_family(root: &Path) -> Option<String> {
+    if is_cargo_project(root) {
+        Some("cargo".to_string())
+    } else if is_npm_project(root) {
+        Some("npm".to_string())
+    } else if is_python_project(root) {
+        Some("python".to_string())
+    } else if is_go_project(root) {
+        Some("go".to_string())
+    } else if is_maven_project(root) {
+        Some("maven".to_string())
+    } else {
+        None
+    }
+}

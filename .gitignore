@@ -51,3 +51,4 @@ lcov.info
 .env
 *.env
 .agent.env
+llm_config.toml
