@@ -8,7 +8,6 @@ use crossterm::style::{Color, Stylize};
 use indicatif::{ProgressBar, ProgressStyle};
 
 use once_cell::sync::Lazy;
-use term_size;
 
 use crate::runner;
 

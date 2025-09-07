@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use once_cell::sync::{Lazy, OnceCell};
-use reqwest::{header, Client, Response, StatusCode};
+use reqwest::{header, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, json};
 use std::collections::HashMap;
@@ -350,8 +350,7 @@ async fn provider_chat(
 
     let parsed: ChatResponse = serde_json::from_str(&text).context("LLM JSON decode failed")?;
     let out = parsed
-        .choices
-        .get(0)
+        .choices.first()
         .map(|c| c.message.content.clone())
         .unwrap_or_default();
     Ok(out)

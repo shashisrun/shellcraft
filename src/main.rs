@@ -39,7 +39,6 @@ mod runner;
 mod ui;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -813,11 +812,11 @@ trait Agent {
 
 // Re-export PlannerAgent for crate::planner_agent and crate::agents::planner_agent
 pub mod planner_agent {
-    use super::PlannerAgent;
+    
 }
 pub mod agents {
     pub mod planner_agent {
-        use super::super::PlannerAgent;
+        
     }
 }
 
@@ -1056,7 +1055,7 @@ Be concise and practical:
         Ok(summary) => {
             let sum_end = SystemTime::now();
             ui::print("\nProject summary:");
-            ui::print(&summary.trim());
+            ui::print(summary.trim());
             // Record dummy usage (in real code we'd parse token count)
             record_usage(100, 200);
             record_provider_usage(
@@ -1154,7 +1153,7 @@ async fn main() -> Result<()> {
             return Ok(());
         } else if subcommand.is_none() {
             subcommand = Some(arg);
-            sub_args.extend(args.map(|a| a));
+            sub_args.extend(args);
             break;
         }
     }
@@ -1811,7 +1810,7 @@ Be concise and practical:
             Ok(summary) => {
                 let sum_end = SystemTime::now();
                 ui::print("\nProject summary:");
-                ui::print(&summary.trim());
+                ui::print(summary.trim());
                 // Record dummy usage (in real code we'd parse token count)
                 record_usage(100, 200);
                 record_provider_usage(

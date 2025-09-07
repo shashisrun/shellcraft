@@ -87,7 +87,7 @@ fn guard_check(command: &str) -> Result<(), io::Error> {
 
     // Allowlist check.
     let first_token = command.split_whitespace().next().unwrap_or("");
-    let is_allowed = ALLOWLIST.iter().any(|&good| good == first_token);
+    let is_allowed = ALLOWLIST.contains(&first_token);
 
     if !is_allowed {
         let cfg = GLOBAL_GUARD.lock().unwrap();
@@ -261,8 +261,7 @@ impl CommandRunner {
 
         // All attempts exhausted; return the most relevant error.
         Err(last_error.unwrap_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 "Command failed after all retry attempts",
             )
         }))
@@ -346,8 +345,7 @@ fn generic_run(args: &[String], cwd: &Path) -> Result<String, io::Error> {
     if output.status.success() {
         Ok(stdout)
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
+        Err(io::Error::other(
             format!(
                 "Command failed with status {:?}: {}",
                 output.status.code(),
@@ -378,59 +376,57 @@ fn detect_maven(path: &Path) -> bool {
 /* Built‑in tool implementations -------------------------------------------- */
 
 fn cargo_build_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["cargo".to_string(), "build".to_string()], cwd)
+    generic_run(&["cargo".to_string(), "build".to_string()], cwd)
 }
 fn cargo_test_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["cargo".to_string(), "test".to_string()], cwd)
+    generic_run(&["cargo".to_string(), "test".to_string()], cwd)
 }
 fn npm_build_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
     generic_run(
-        &vec!["npm".to_string(), "run".to_string(), "build".to_string()],
+        &["npm".to_string(), "run".to_string(), "build".to_string()],
         cwd,
     )
 }
 fn npm_test_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["npm".to_string(), "test".to_string()], cwd)
+    generic_run(&["npm".to_string(), "test".to_string()], cwd)
 }
 fn pytest_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["pytest".to_string()], cwd)
+    generic_run(&["pytest".to_string()], cwd)
 }
 fn go_test_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["go".to_string(), "test".to_string()], cwd)
+    generic_run(&["go".to_string(), "test".to_string()], cwd)
 }
 fn mvn_test_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["mvn".to_string(), "test".to_string()], cwd)
+    generic_run(&["mvn".to_string(), "test".to_string()], cwd)
 }
 fn rustfmt_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["rustfmt".to_string()], cwd)
+    generic_run(&["rustfmt".to_string()], cwd)
 }
 fn prettier_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
     generic_run(
-        &vec![
-            "prettier".to_string(),
+        &["prettier".to_string(),
             "--write".to_string(),
-            ".".to_string(),
-        ],
+            ".".to_string()],
         cwd,
     )
 }
 fn black_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["black".to_string(), ".".to_string()], cwd)
+    generic_run(&["black".to_string(), ".".to_string()], cwd)
 }
 fn gofmt_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
     generic_run(
-        &vec!["gofmt".to_string(), "-w".to_string(), ".".to_string()],
+        &["gofmt".to_string(), "-w".to_string(), ".".to_string()],
         cwd,
     )
 }
 fn clippy_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["cargo".to_string(), "clippy".to_string()], cwd)
+    generic_run(&["cargo".to_string(), "clippy".to_string()], cwd)
 }
 fn eslint_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["eslint".to_string(), ".".to_string()], cwd)
+    generic_run(&["eslint".to_string(), ".".to_string()], cwd)
 }
 fn flake8_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
-    generic_run(&vec!["flake8".to_string()], cwd)
+    generic_run(&["flake8".to_string()], cwd)
 }
 fn grep_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
     generic_run(_args, cwd)
@@ -681,13 +677,13 @@ pub fn execute_tool(name: &str, args: &[&str], cwd: &Path) -> Result<String, io:
 
     // Safety checks
     for &arg in args {
-        if tool.safety.denylist.iter().any(|&d| d == arg) {
+        if tool.safety.denylist.contains(&arg) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 format!("Argument '{}' is denied for tool '{}'", arg, name),
             ));
         }
-        if !tool.safety.allowlist.is_empty() && !tool.safety.allowlist.iter().any(|&a| a == arg) {
+        if !tool.safety.allowlist.is_empty() && !tool.safety.allowlist.contains(&arg) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 format!("Argument '{}' not allowed for tool '{}'", arg, name),
@@ -850,7 +846,7 @@ impl ExecutorAgent {
                 *indegree.entry(id.clone()).or_insert(0) += 1;
                 dependents
                     .entry(dep.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(id.clone());
             }
         }
@@ -917,7 +913,7 @@ impl ExecutorAgent {
                     let exec_res = if let Some(_tool) = get_tool(&task.tool) {
                         // Use the tool registry.
                         let arg_refs: Vec<&str> = task.args.iter().map(|s| s.as_str()).collect();
-                        execute_tool(&task.tool, &arg_refs, &Path::new("."))
+                        execute_tool(&task.tool, &arg_refs, Path::new("."))
                     } else {
                         // Fallback to raw command execution.
                         let mut cmd = task.tool.clone();
@@ -1019,7 +1015,7 @@ impl FileWatcher {
         let changed = current.iter().any(|(path, mtime)| {
             self.timestamps
                 .get(path)
-                .map_or(true, |prev| *prev != *mtime)
+                .is_none_or(|prev| *prev != *mtime)
         }) || self.timestamps.len() != current.len();
 
         // Update stored timestamps for the next check.
@@ -1220,8 +1216,7 @@ fn run_with_self_healing(
                     );
                     // TODO: enqueue corrective task when PlannerAgent is available.
                     info!("Self‑healing exhausted for command '{}'. Manual intervention may be required.", command);
-                    return Err(io::Error::new(
-                        io::ErrorKind::Other,
+                    return Err(io::Error::other(
                         format!(
                             "Command '{}' failed after {} self‑healing attempts",
                             command, max_heal

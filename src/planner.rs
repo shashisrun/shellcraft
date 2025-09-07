@@ -907,7 +907,7 @@ fn compact_index(mut v: Vec<FileMeta>) -> Vec<FileMeta> {
     }
     v.sort_by_key(|m| {
         let w = m.ext.as_deref().map(weight).unwrap_or(1);
-        let size_bucket = (m.size as i64 / 4096) as i64;
+        let size_bucket = (m.size as i64 / 4096);
         (-(w as i64), size_bucket)
     });
     v.truncate(800);
