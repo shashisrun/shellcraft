@@ -1,29 +1,11 @@
 use anyhow::Result;
-use ignore::WalkBuilder;
-use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use walkdir::WalkDir;
 
-static IGNORE_PATTERNS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| {
-    Mutex::new(
-        vec![
-            "node_modules",
-            "dist",
-            "build",
-            "target",
-            ".git",
-            ".next",
-            ".turbo",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect(),
-    )
-});
-
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileMeta {
     pub path: String,
     pub size: u64,
@@ -31,140 +13,81 @@ pub struct FileMeta {
 }
 
 pub fn file_inventory(root: &Path) -> Result<Vec<FileMeta>> {
-    let mut out = vec![];
-    let walker = WalkBuilder::new(root)
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .build();
-
-    let ignore = IGNORE_PATTERNS.lock().unwrap();
-
-    for dent in walker {
-        let dent = match dent {
-            Ok(d) => d,
+    let mut out = Vec::new();
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let p = e.path();
+            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            !name.starts_with('.')
+                && name != "target"
+                && name != "node_modules"
+                && name != "dist"
+                && name != "build"
+        })
+    {
+        let entry = match entry {
+            Ok(e) => e,
             Err(_) => continue,
         };
-        let p = dent.path();
-        if !p.is_file() {
-            continue;
+        let p = entry.path();
+        if p.is_file() {
+            if let Ok(md) = p.metadata() {
+                let rel = diff_paths(p, root);
+                out.push(FileMeta {
+                    path: rel.to_string_lossy().to_string(),
+                    size: md.len(),
+                    ext: p.extension().and_then(|s| s.to_str()).map(|s| s.to_string()),
+                });
+            }
         }
-        if contains_any_segment_str(p, &ignore) {
-            continue;
-        }
-
-        let rel = pathdiff::diff_paths(p, root).unwrap_or_else(|| p.to_path_buf());
-        let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
-        let ext = p.extension().map(|e| e.to_string_lossy().to_string());
-        out.push(FileMeta {
-            path: rel.to_string_lossy().to_string(),
-            size,
-            ext,
-        });
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
 }
 
-#[allow(dead_code)]
-pub fn list_project_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let inv = file_inventory(root)?;
-    Ok(inv.into_iter().map(|m| root.join(m.path)).collect())
-}
-
-fn contains_any_segment_str(p: &Path, segs: &[String]) -> bool {
-    p.components().any(|c| {
-        let s = c.as_os_str().to_string_lossy();
-        segs.iter().any(|needle| s == needle.as_str())
-    })
-}
-
-pub fn read_to_string(p: &Path) -> Result<String> {
-    Ok(std::fs::read_to_string(p)?)
-}
-
-pub fn atomic_write(p: &Path, content: &str) -> Result<()> {
-    if let Some(parent) = p.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let tmp = p.with_extension("tmp~agent");
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(content.as_bytes())?;
-        f.sync_all()?;
-    }
-    fs::rename(tmp, p)?;
+pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let tmp = path.with_extension("tmp.write");
+    fs::write(&tmp, content)?;
+    fs::rename(&tmp, path)?;
     Ok(())
 }
 
-/// Merge additional ignore patterns at runtime.
-#[allow(dead_code)]
-pub fn merge_ignore_patterns(new: &[&str]) {
-    let mut guard = IGNORE_PATTERNS.lock().unwrap();
-    for &pat in new {
-        if !guard.iter().any(|existing| existing == pat) {
-            guard.push(pat.to_string());
+pub fn read_to_string(p: &Path) -> Result<String> {
+    Ok(fs::read_to_string(p)?)
+}
+
+fn diff_paths(p: &Path, root: &Path) -> PathBuf {
+    pathdiff::diff_paths(p, root).unwrap_or_else(|| p.to_path_buf())
+}
+
+/// Append ignore patterns to .gitignore (dedup).
+pub fn merge_ignore_patterns(patterns: &[&str]) {
+    let path = Path::new(".gitignore");
+    let mut existing = String::new();
+    if path.exists() {
+        if let Ok(s) = fs::read_to_string(path) {
+            existing = s;
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Project type detection helpers
-// ---------------------------------------------------------------------------
-
-/// Returns true if the given directory looks like a Cargo (Rust) project.
-pub fn is_cargo_project(root: &Path) -> bool {
-    root.join("Cargo.toml").is_file()
-}
-
-/// Returns true if the given directory looks like an NPM/Yarn/PNPM (JavaScript) project.
-pub fn is_npm_project(root: &Path) -> bool {
-    root.join("package.json").is_file()
-        || root.join("yarn.lock").is_file()
-        || root.join("pnpm-lock.yaml").is_file()
-        || root.join("pnpm-lock.yml").is_file()
-}
-
-/// Returns true if the given directory looks like a Python project.
-pub fn is_python_project(root: &Path) -> bool {
-    root.join("pyproject.toml").is_file()
-        || root.join("requirements.txt").is_file()
-        || root.join("setup.py").is_file()
-}
-
-/// Returns true if the given directory looks like a Go project.
-pub fn is_go_project(root: &Path) -> bool {
-    root.join("go.mod").is_file()
-}
-
-/// Returns true if the given directory looks like a Maven (Java) project.
-pub fn is_maven_project(root: &Path) -> bool {
-    root.join("pom.xml").is_file()
-}
-
-/// Detects the tool family for a given project directory.
-///
-/// The returned string is one of:
-/// - "cargo"
-/// - "npm"
-/// - "python"
-/// - "go"
-/// - "maven"
-///
-/// Returns `None` if the project type cannot be determined.
-pub fn detect_tool_family(root: &Path) -> Option<String> {
-    if is_cargo_project(root) {
-        Some("cargo".to_string())
-    } else if is_npm_project(root) {
-        Some("npm".to_string())
-    } else if is_python_project(root) {
-        Some("python".to_string())
-    } else if is_go_project(root) {
-        Some("go".to_string())
-    } else if is_maven_project(root) {
-        Some("maven".to_string())
-    } else {
-        None
+    let mut lines: Vec<String> = existing.lines().map(|s| s.to_string()).collect();
+    let mut changed = false;
+    for pat in patterns {
+        if !lines.iter().any(|l| l.trim() == *pat) {
+            lines.push(pat.to_string());
+            changed = true;
+        }
+    }
+    if changed {
+        if let Ok(mut f) = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{}", lines.join("\n"));
+        }
     }
 }

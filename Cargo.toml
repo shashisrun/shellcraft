@@ -41,6 +41,9 @@ log = "0.4"
 walkdir = "2.5"
 arboard = "3.6"
 humantime = "2.1"
+diff = "0.1.13"
+libc = "0.2"
+signal-hook = "0.3"
 
 [dev-dependencies]
 insta = { version = "1.38", features = ["json"] }

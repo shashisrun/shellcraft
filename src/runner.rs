@@ -13,6 +13,9 @@ use walkdir::WalkDir;
 use crate::editor;
 use crate::llm;
 
+use console::style;
+use futures::executor::block_on;
+
 /// Guardrail configuration.
 ///
 /// * `require_confirmation` – If `true`, any command that is not explicitly
@@ -1103,11 +1106,11 @@ impl AutonomousRunner {
     }
 
     fn execute_planner(&self) -> Result<String, io::Error> {
-        run_with_self_healing(&self.planner_cmd, &self.runner, self.max_heal_iters)
+        block_on(run_with_self_healing(&self.planner_cmd, &self.runner, self.max_heal_iters))
     }
 
     fn execute_pipeline(&self) -> Result<String, io::Error> {
-        run_with_self_healing(&self.pipeline_cmd, &self.runner, self.max_heal_iters)
+        block_on(run_with_self_healing(&self.pipeline_cmd, &self.runner, self.max_heal_iters))
     }
 }
 
@@ -1149,7 +1152,7 @@ fn record_timeline(entry: TimelineEntry) {
 /// `PlannerAgent` and an error is returned.
 ///
 /// Returns the command's stdout on success.
-fn run_with_self_healing(
+async fn run_with_self_healing(
     command: &str,
     runner: &CommandRunner,
     max_heal: u32,
@@ -1243,12 +1246,11 @@ fn run_with_self_healing(
                 };
 
                 // 3. Ask LLM for a minimal patch.
-                let patch = match llm::propose_patch(&log_content, &diff) {
+                let patch = match llm::propose_patch(&log_content, &diff).await {
                     Ok(p) => p,
                     Err(e) => {
-                        warn!("LLM failed to propose a patch: {}", e);
-                        // Skip to next iteration (which will eventually hit max_heal).
-                        continue;
+                        eprintln!("{}", style(format!("Patch proposal failed: {e}")).red());
+                        diff.clone() // keep current diff as fallback without moving it
                     }
                 };
 
