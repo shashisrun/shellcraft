@@ -6,18 +6,19 @@ use std::sync::{
     Arc,
 };
 
-mod planner;
+mod agents;
 mod capabilities;
-mod llm;
-mod ui;
 mod fsutil;
-
+mod llm;
+mod models;
+mod planner;
+mod ui;
 
 // We inline a tiny diff preview + atomic write so we don't depend on
 // diff/editor symbols that may differ in your tree.
 use similar::{ChangeTag, TextDiff};
-use tempfile::NamedTempFile;
 use std::io::Write as _;
+use tempfile::NamedTempFile;
 use tokio::fs as tokio_fs;
 
 #[tokio::main]
@@ -66,8 +67,9 @@ async fn orchestrate(user_input: &str) -> Result<()> {
     let root = std::env::current_dir()?;
     let manifest = capabilities::build_manifest(&root); // signature: (&Path) -> Manifest
 
-    // plan_changes signature: (&Path, &str, &Manifest)
-    let plan = planner::plan_changes(&root, user_input, &manifest).await?;
+    // Planner agent chats with user and returns plan
+    let planner = agents::PlannerAgent::default();
+    let plan = planner.chat_and_plan(&root, user_input, &manifest).await?;
 
     if !plan.notes.is_empty() {
         println!("{} {}", style("Notes:").cyan(), plan.notes);
@@ -88,7 +90,9 @@ async fn orchestrate(user_input: &str) -> Result<()> {
     // Edits
     for edit in plan.edit.iter() {
         let file_path: PathBuf = root.join(&edit.path);
-        let old_content = tokio_fs::read_to_string(&file_path).await.unwrap_or_default();
+        let old_content = tokio_fs::read_to_string(&file_path)
+            .await
+            .unwrap_or_default();
 
         // llm::propose_edit(EditReq)
         let req = llm::EditReq {
@@ -105,7 +109,11 @@ async fn orchestrate(user_input: &str) -> Result<()> {
 
     // Actions (placeholder): avoid referencing fields of planner::Action.
     if !plan.actions.is_empty() {
-        println!("{} {}", style("Planned actions:").cyan(), plan.actions.len());
+        println!(
+            "{} {}",
+            style("Planned actions:").cyan(),
+            plan.actions.len()
+        );
         // TODO: replace with your actual runner call, e.g.:
         // runner::run_and_capture(&root, &plan.actions).await?;
     }
@@ -115,7 +123,10 @@ async fn orchestrate(user_input: &str) -> Result<()> {
 
 fn print_unified_diff(rel_path: &str, old: &str, new: &str) {
     let diff = TextDiff::from_lines(old, new);
-    println!("{}", style(format!("--- a/{rel_path}\n+++ b/{rel_path}")).dim());
+    println!(
+        "{}",
+        style(format!("--- a/{rel_path}\n+++ b/{rel_path}")).dim()
+    );
     for change in diff.iter_all_changes() {
         let (sign, s) = match change.tag() {
             ChangeTag::Delete => ("-", style(change).red()),

@@ -1,0 +1,19 @@
+{
+  "default_model": "gpt-4o-mini",
+  "models": [
+    {
+      "id": "gpt-4o-mini",
+      "provider": "openai",
+      "api_key_env": "OPENAI_API_KEY",
+      "has_tools": true,
+      "specialty": "general coding"
+    },
+    {
+      "id": "llama-3.3-70b-versatile",
+      "provider": "groq",
+      "api_key_env": "GROQ_API_KEY",
+      "has_tools": false,
+      "specialty": "reasoning"
+    }
+  ]
+}

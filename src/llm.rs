@@ -4,6 +4,8 @@ use reqwest::Client;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{self, json};
 
+use crate::models::{ModelInfo, ModelRegistry};
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EditReq {
     pub file_path: String,
@@ -18,7 +20,33 @@ static HTTP: Lazy<Client> = Lazy::new(|| {
         .expect("reqwest client")
 });
 
-fn pick_provider() -> Result<(String, String, String)> {
+static MODEL_REGISTRY: Lazy<ModelRegistry> = Lazy::new(ModelRegistry::load);
+
+fn pick_provider(model_override: Option<&str>) -> Result<(String, String, String)> {
+    let registry = &*MODEL_REGISTRY;
+    let model_id = model_override
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("MODEL_ID").ok())
+        .unwrap_or_else(|| registry.default_model.clone());
+
+    if let Some(ModelInfo {
+        provider,
+        api_key_env,
+        ..
+    }) = registry.get(&model_id).cloned()
+    {
+        let key = std::env::var(&api_key_env).map_err(|_| anyhow!("{} not set", api_key_env))?;
+        let base = match provider.as_str() {
+            "openai" => std::env::var("OPENAI_BASE_URL")
+                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string()),
+            "groq" => std::env::var("GROQ_BASE_URL")
+                .unwrap_or_else(|_| "https://api.groq.com/openai/v1".to_string()),
+            other => std::env::var(format!("{}_BASE_URL", other.to_uppercase()))
+                .unwrap_or_else(|_| String::new()),
+        };
+        return Ok((key, base, model_id));
+    }
+
     if let Ok(key) = std::env::var("GROQ_API_KEY") {
         let base = std::env::var("OPENAI_BASE_URL")
             .or_else(|_| std::env::var("GROQ_BASE_URL"))
@@ -34,7 +62,7 @@ fn pick_provider() -> Result<(String, String, String)> {
         return Ok((key, base, model));
     }
     Err(anyhow!(
-        "API_KEY not set. Set OPENAI_API_KEY or GROQ_API_KEY (and optional MODEL_ID / *_BASE_URL)."
+        "API_KEY not set. Set OPENAI_API_KEY or GROQ_API_KEY (and optional MODEL_ID / *_BASE_URL).",
     ))
 }
 
@@ -62,7 +90,7 @@ struct Message {
 }
 
 pub async fn chat_text(system: &str, user: &str) -> Result<String> {
-    let (key, base, model) = pick_provider()?;
+    let (key, base, model) = pick_provider(None)?;
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
     let req = ChatRequest {
         model: &model,
@@ -95,7 +123,7 @@ pub async fn chat_text(system: &str, user: &str) -> Result<String> {
 }
 
 pub async fn chat_json<T: DeserializeOwned>(system: &str, user_json: &str) -> Result<T> {
-    let (key, base, model) = pick_provider()?;
+    let (key, base, model) = pick_provider(None)?;
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
 
     let req = ChatRequest {
@@ -127,9 +155,8 @@ pub async fn chat_json<T: DeserializeOwned>(system: &str, user_json: &str) -> Re
         .map(|c| c.message.content.clone())
         .unwrap_or_else(|| "{}".into());
 
-    serde_json::from_str::<T>(&content).or_else(|_| {
-        Err(anyhow!("LLM did not return valid JSON: {}", content))
-    })
+    serde_json::from_str::<T>(&content)
+        .or_else(|_| Err(anyhow!("LLM did not return valid JSON: {}", content)))
 }
 
 pub async fn propose_edit(req: EditReq) -> Result<String> {
@@ -163,7 +190,7 @@ fn strip_code_fences(s: &str) -> &str {
 }
 
 pub async fn robust_chat_text(system: &str, user: &str) -> Result<String> {
-    let (key, base, model) = pick_provider()?;
+    let (key, base, model) = pick_provider(None)?;
     let url = format!("{}/chat/completions", base.trim_end_matches('/'));
     let req = ChatRequest {
         model: &model,
