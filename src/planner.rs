@@ -1,7 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::path::Path;
 
 use crate::capabilities::{can_run, system_preamble, Manifest};
@@ -77,7 +75,7 @@ Schema:
 Return pure JSON, no markdown."#.to_string()
 }
 
-/// Build a plan using the LLM + fallback + preflight
+/// Build a plan using the LLM and preflight
 pub async fn plan_changes(root: &Path, user_request: &str, manifest: &Manifest) -> Result<Plan> {
     let mut index = file_inventory(root)?;
     if index.len() > 800 {
@@ -98,15 +96,10 @@ pub async fn plan_changes(root: &Path, user_request: &str, manifest: &Manifest) 
         &serde_json::to_string(&prompt).unwrap(),
     )
     .await
-    .context("planner LLM failed")
-    .and_then(|p: Plan| {
-        if validate_plan_paths(root, &p) {
-            Ok(p)
-        } else {
-            Err(anyhow!("LLM returned non-existent file paths"))
-        }
-    })
-    .unwrap_or_else(|_| fallback_plan(root, user_request, &index));
+    .context("planner LLM failed")?;
+    if !validate_plan_paths(root, &plan) {
+        return Err(anyhow!("LLM returned non-existent file paths"));
+    }
 
     // Preflight: drop invalid actions & annotate notes
     preflight_actions(manifest, &mut plan);
@@ -133,7 +126,11 @@ pub fn preflight_actions(manifest: &Manifest, plan: &mut Plan) {
                 if ok {
                     kept.push(a.clone());
                 } else {
-                    dropped.push(format!("drop action `{}`: {}", program, why.unwrap_or_default()));
+                    dropped.push(format!(
+                        "drop action `{}`: {}",
+                        program,
+                        why.unwrap_or_default()
+                    ));
                 }
             }
         }
@@ -147,86 +144,6 @@ pub fn preflight_actions(manifest: &Manifest, plan: &mut Plan) {
             "Preflight removed actions not supported in this environment:\n- {}",
             dropped.join("\n- ")
         ));
-    }
-}
-
-/// Fallback heuristic when LLM fails
-fn fallback_plan(root: &Path, user_request: &str, _index: &[FileMeta]) -> Plan {
-    let mut read_set: HashSet<String> = HashSet::new();
-    let mut edit_set: HashSet<String> = HashSet::new();
-    let mut actions: Vec<Action> = Vec::new();
-
-    let token_re = Regex::new(r"[A-Za-z0-9_/\\.-]+\.[A-Za-z0-9]+").unwrap();
-    for cap in token_re.captures_iter(user_request) {
-        let candidate = cap.get(0).unwrap().as_str().replace('\\', "/");
-        if root.join(&candidate).exists() {
-            if user_request.to_lowercase().contains("edit")
-                || user_request.to_lowercase().contains("modify")
-                || user_request.to_lowercase().contains("change")
-            {
-                edit_set.insert(candidate);
-            } else {
-                read_set.insert(candidate);
-            }
-        }
-    }
-
-    // Defaults
-    if read_set.is_empty() && edit_set.is_empty() {
-        for probe in ["src/main.rs", "Cargo.toml", "README.md", "readme.md"].iter() {
-            if root.join(probe).exists() {
-                read_set.insert((*probe).into());
-            }
-        }
-    }
-
-    // Infer simple actions
-    let low = user_request.to_lowercase();
-    if low.contains("build") && root.join("Cargo.toml").exists() {
-        actions.push(Action::Run {
-            program: "cargo".into(),
-            args: vec!["build".into()],
-            workdir: None,
-            log_hint: Some("build".into()),
-            retries: 1,
-            backoff_ms: 1200,
-        });
-    }
-    if low.contains("test") && root.join("Cargo.toml").exists() {
-        actions.push(Action::Run {
-            program: "cargo".into(),
-            args: vec!["test".into()],
-            workdir: None,
-            log_hint: Some("test".into()),
-            retries: 1,
-            backoff_ms: 1200,
-        });
-    }
-
-    let mut read: Vec<String> = read_set.into_iter().collect();
-    let mut edit: Vec<String> = edit_set.into_iter().collect();
-
-    while read.len() + edit.len() > 6 {
-        if !read.is_empty() {
-            read.pop();
-        } else if !edit.is_empty() {
-            edit.pop();
-        }
-    }
-
-    let edit_plans = edit
-        .into_iter()
-        .map(|p| EditPlan {
-            path: p.clone(),
-            intent: format!("Apply changes inferred from request: \"{}\"", user_request),
-        })
-        .collect::<Vec<_>>();
-
-    Plan {
-        read,
-        edit: edit_plans,
-        actions,
-        notes: "Fallback plan generated heuristically.".into(),
     }
 }
 
