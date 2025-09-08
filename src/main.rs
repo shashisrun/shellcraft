@@ -12,8 +12,8 @@ mod fsutil;
 mod llm;
 mod models;
 mod planner;
-mod ui;
 mod task_ui;
+mod ui;
 
 // We inline a tiny diff preview + atomic write so we don't depend on
 // diff/editor symbols that may differ in your tree.
@@ -85,6 +85,20 @@ async fn orchestrate(user_input: &str) -> Result<()> {
                 println!("{content}");
             }
             Err(err) => eprintln!("{} {} ({err})", style("Failed to read:").red(), path),
+        }
+    }
+
+    // Deletes
+    for path in plan.delete.iter() {
+        let abs = root.join(path);
+        if abs.exists() {
+            if let Err(err) = fsutil::remove_path(&abs) {
+                eprintln!("{} {} ({err})", style("Failed to delete:").red(), path);
+            } else {
+                println!("{} {}", style("Deleted:").red(), path);
+            }
+        } else {
+            eprintln!("{} {} (not found)", style("Failed to delete:").red(), path);
         }
     }
 

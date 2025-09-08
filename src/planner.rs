@@ -14,6 +14,8 @@ pub struct Plan {
     #[serde(default)]
     pub edit: Vec<EditPlan>,
     #[serde(default)]
+    pub delete: Vec<String>,
+    #[serde(default)]
     pub actions: Vec<Action>,
     #[serde(default)]
     pub notes: String,
@@ -64,11 +66,13 @@ fn guidance() -> String {
 - If the ask is informational only, leave `edit=[]` and put a short answer in `notes`.
 - Use actions only for tools that are enabled in the capabilities list.
 - For Rust projects, typical actions are: `cargo build`, `cargo test`.
+- Use `delete` for files or directories that should be removed.
 - Always fill `retries` and `backoff_ms` (small numbers).
 Schema:
 {
   "read": string[],
   "edit": [{"path": string, "intent": string}],
+  "delete": string[],
   "actions": [{"kind":"run","program":string,"args":string[],"workdir?":string,"log_hint?":string,"retries":number,"backoff_ms":number}],
   "notes": string
 }
@@ -108,7 +112,12 @@ pub async fn plan_changes(root: &Path, user_request: &str, manifest: &Manifest) 
 }
 
 fn validate_plan_paths(root: &Path, plan: &Plan) -> bool {
-    for p in plan.read.iter().chain(plan.edit.iter().map(|e| &e.path)) {
+    for p in plan
+        .read
+        .iter()
+        .chain(plan.edit.iter().map(|e| &e.path))
+        .chain(plan.delete.iter())
+    {
         if !root.join(p).exists() {
             return false;
         }

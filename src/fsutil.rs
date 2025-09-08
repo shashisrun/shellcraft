@@ -38,7 +38,10 @@ pub fn file_inventory(root: &Path) -> Result<Vec<FileMeta>> {
                 out.push(FileMeta {
                     path: rel.to_string_lossy().to_string(),
                     size: md.len(),
-                    ext: p.extension().and_then(|s| s.to_str()).map(|s| s.to_string()),
+                    ext: p
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string()),
                 });
             }
         }
@@ -90,4 +93,14 @@ pub fn merge_ignore_patterns(patterns: &[&str]) {
             let _ = writeln!(f, "{}", lines.join("\n"));
         }
     }
+}
+
+/// Remove a file or directory recursively.
+pub fn remove_path(p: &Path) -> Result<()> {
+    if p.is_dir() {
+        fs::remove_dir_all(p)?;
+    } else if p.is_file() {
+        fs::remove_file(p)?;
+    }
+    Ok(())
 }
