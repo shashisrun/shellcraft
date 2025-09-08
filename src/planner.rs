@@ -62,13 +62,16 @@ struct PlanPrompt<'a> {
 
 fn guidance() -> String {
     r#"Heuristics:
+- File operations use the `fs` capability:
+  - add paths to `read` to view file contents
+  - provide {path,intent} entries in `edit` to modify files
+  - add paths in `delete` to remove them
 - Do not call external tools like `repo_browser.print_tree`; the file index
   already contains the repository structure.
 - Prefer touching the fewest files.
 - If the ask is informational only, leave `edit=[]` and put a short answer in `notes`.
 - Use actions only for tools that are enabled in the capabilities list.
 - For Rust projects, typical actions are: `cargo build`, `cargo test`.
-- Use `delete` for files or directories that should be removed.
 - Always fill `retries` and `backoff_ms` (small numbers).
 Schema:
 {
