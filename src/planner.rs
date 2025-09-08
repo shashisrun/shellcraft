@@ -62,6 +62,7 @@ struct PlanPrompt<'a> {
 
 fn guidance() -> String {
     r#"Heuristics:
+- The `file_index` gives a birds-eye view of repository paths.
 - File operations use the `fs` capability:
   - add paths to `read` to view file contents
   - provide {path,intent} entries in `edit` to modify files

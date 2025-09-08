@@ -126,6 +126,7 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
 pub fn system_preamble(manifest: &Manifest) -> String {
     let t = &manifest.tools;
     let mut lines: Vec<String> = vec![
+        "A file index listing project files is provided for a birds-eye view.".into(),
         "Use the `fs` capability for file operations:".into(),
         "- add paths to `read` to view file contents".into(),
         "- provide {path,intent} entries in `edit` to modify files".into(),
