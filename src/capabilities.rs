@@ -22,6 +22,7 @@ pub struct Tools {
     pub go: bool,
     pub mvn: bool,
     pub git: bool,
+    pub github: bool,
     pub rg: bool,
     pub grep: bool,
     pub prettier: bool,
@@ -77,6 +78,7 @@ pub fn build_manifest(_root: &Path) -> Manifest {
             go: which("go").is_ok(),
             mvn: which("mvn").is_ok(),
             git: which("git").is_ok(),
+            github: which("gh").is_ok(),
             rg: which("rg").is_ok(),
             grep: which("grep").is_ok(),
             prettier: which("prettier").is_ok(),
@@ -99,6 +101,7 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
         "go" => t.go,
         "mvn" => t.mvn,
         "git" => t.git,
+        "gh" | "github" => t.github,
         "rg" => t.rg,
         "grep" => t.grep,
         "prettier" => t.prettier,
@@ -118,7 +121,8 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
 pub fn system_preamble(manifest: &Manifest) -> String {
     let t = &manifest.tools;
     let mut lines = vec![
-        "You can propose file edits and also request actions to run tools.\nEnabled tools:".to_string(),
+        "You can propose file edits and also request actions to run tools.\nEnabled tools:"
+            .to_string(),
     ];
     let mut add = |name: &str, ok: bool| {
         if ok {
@@ -133,6 +137,7 @@ pub fn system_preamble(manifest: &Manifest) -> String {
     add("go", t.go);
     add("mvn", t.mvn);
     add("git", t.git);
+    add("github", t.github);
     add("rg", t.rg);
     add("grep", t.grep);
     add("prettier", t.prettier);
