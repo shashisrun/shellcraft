@@ -62,6 +62,8 @@ struct PlanPrompt<'a> {
 
 fn guidance() -> String {
     r#"Heuristics:
+- Do not call external tools like `repo_browser.print_tree`; the file index
+  already contains the repository structure.
 - Prefer touching the fewest files.
 - If the ask is informational only, leave `edit=[]` and put a short answer in `notes`.
 - Use actions only for tools that are enabled in the capabilities list.

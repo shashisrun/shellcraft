@@ -17,6 +17,7 @@ pub struct Tools {
     pub fs: bool,
     pub cargo: bool,
     pub npm: bool,
+    pub bun: bool,
     pub pnpm: bool,
     pub yarn: bool,
     pub pytest: bool,
@@ -87,6 +88,7 @@ pub fn build_manifest(_root: &Path) -> Manifest {
             eslint: which("eslint").is_ok(),
             rustfmt: which("rustfmt").is_ok(),
             clippy: which("cargo-clippy").is_ok(),
+            bun: which("bun").is_ok(),
         },
     }
 }
@@ -97,6 +99,7 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
     let ok = match program {
         "cargo" => t.cargo,
         "npm" => t.npm,
+        "bun" => t.bun,
         "pnpm" => t.pnpm,
         "yarn" => t.yarn,
         "pytest" => t.pytest,
@@ -134,6 +137,7 @@ pub fn system_preamble(manifest: &Manifest) -> String {
     add("fs", t.fs);
     add("cargo", t.cargo);
     add("npm", t.npm);
+    add("bun", t.bun);
     add("pnpm", t.pnpm);
     add("yarn", t.yarn);
     add("pytest", t.pytest);
