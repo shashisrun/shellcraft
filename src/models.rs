@@ -8,7 +8,7 @@ pub struct ModelInfo {
     #[serde(default)]
     pub api_key_env: String,
     #[serde(default)]
-    pub has_tools: bool,
+    pub tools: Vec<String>,
     #[serde(default)]
     pub specialty: String,
 }

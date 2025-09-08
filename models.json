@@ -5,21 +5,21 @@
       "id": "openai/gpt-oss-120b",
       "provider": "groq",
       "api_key_env": "GROQ_API_KEY",
-      "has_tools": true,
+      "tools": ["code_interpreter"],
       "specialty": "reasoning"
     },
     {
       "id": "llama-3.3-70b-versatile",
       "provider": "groq",
       "api_key_env": "GROQ_API_KEY",
-      "has_tools": true,
+       "tools": ["code_interpreter"],
       "specialty": "versatile"
     },
     {
       "id": "llama-3.1-8b-instant",
       "provider": "groq",
       "api_key_env": "GROQ_API_KEY",
-      "has_tools": true,
+      "tools": ["code_interpreter"],
       "specialty": "chat"
     }
   ]

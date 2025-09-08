@@ -44,11 +44,11 @@ impl Agent for PlannerAgent {
 /// Worker agent placeholder.
 pub struct WorkerAgent {
     pub model: String,
-    pub tools: bool,
+    pub tools: Vec<String>,
 }
 
 impl WorkerAgent {
-    pub fn new(model: String, tools: bool) -> Self {
+    pub fn new(model: String, tools: Vec<String>) -> Self {
         Self { model, tools }
     }
 }
