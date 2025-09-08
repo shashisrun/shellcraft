@@ -9,6 +9,7 @@ use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use std::sync::{mpsc, Arc, Mutex};
 use walkdir::WalkDir;
+use which::which;
 
 use crate::editor;
 use crate::llm;
@@ -69,7 +70,7 @@ static DENYLIST: &[&str] = &["rm -rf", "sudo", "shutdown", "reboot", "init 0", "
 /// Common safe commands that are allowed without confirmation.
 static ALLOWLIST: &[&str] = &[
     "cargo", "npm", "pytest", "go", "mvn", "rustfmt", "prettier", "black", "gofmt", "clippy",
-    "eslint", "flake8", "git", "grep", "rg",
+    "eslint", "flake8", "git", "gh", "grep", "rg",
 ];
 
 /// Perform guardrail checks on a raw command string.
@@ -375,6 +376,12 @@ fn detect_go(path: &Path) -> bool {
 fn detect_maven(path: &Path) -> bool {
     path.join("pom.xml").exists()
 }
+fn detect_git(path: &Path) -> bool {
+    path.join(".git").exists()
+}
+fn detect_github(path: &Path) -> bool {
+    detect_git(path) && which("gh").is_ok()
+}
 
 /* Built‑in tool implementations -------------------------------------------- */
 
@@ -439,6 +446,16 @@ fn ripgrep_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
 }
 fn git_diff_run(_args: &[String], cwd: &Path) -> Result<String, io::Error> {
     generic_run(_args, cwd)
+}
+fn git_run(args: &[String], cwd: &Path) -> Result<String, io::Error> {
+    let mut cmd = vec!["git".to_string()];
+    cmd.extend_from_slice(args);
+    generic_run(&cmd, cwd)
+}
+fn github_run(args: &[String], cwd: &Path) -> Result<String, io::Error> {
+    let mut cmd = vec!["gh".to_string()];
+    cmd.extend_from_slice(args);
+    generic_run(&cmd, cwd)
 }
 
 /* Registry ----------------------------------------------------------------- */
@@ -639,6 +656,32 @@ static TOOL_REGISTRY: Lazy<HashMap<&'static str, Tool>> = Lazy::new(|| {
             name: "ripgrep",
             detect: |_| true,
             run: ripgrep_run,
+            safety: Safety {
+                allowlist: &[],
+                denylist: &[],
+            },
+        },
+    );
+
+    // Git helpers
+    m.insert(
+        "git",
+        Tool {
+            name: "git",
+            detect: detect_git,
+            run: git_run,
+            safety: Safety {
+                allowlist: &[],
+                denylist: &[],
+            },
+        },
+    );
+    m.insert(
+        "github",
+        Tool {
+            name: "github",
+            detect: detect_github,
+            run: github_run,
             safety: Safety {
                 allowlist: &[],
                 denylist: &[],
