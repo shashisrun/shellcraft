@@ -13,6 +13,7 @@ mod llm;
 mod models;
 mod planner;
 mod ui;
+mod task_ui;
 
 // We inline a tiny diff preview + atomic write so we don't depend on
 // diff/editor symbols that may differ in your tree.
@@ -114,6 +115,25 @@ async fn orchestrate(user_input: &str) -> Result<()> {
             style("Planned actions:").cyan(),
             plan.actions.len()
         );
+        // Interactive task dashboard for planned actions
+        let mut items: Vec<task_ui::TaskItem> = plan
+            .actions
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| match a {
+                planner::Action::Run { program, args, .. } => Some(task_ui::TaskItem {
+                    id: i,
+                    summary: format!("{} {}", program, args.join(" ")),
+                    detail: format!("program: {}\nargs: {}", program, args.join(" ")),
+                    status: task_ui::TaskStatus::Pending,
+                    expanded: false,
+                }),
+            })
+            .collect();
+
+        if !items.is_empty() {
+            task_ui::task_dashboard(&mut items)?;
+        }
         // TODO: replace with your actual runner call, e.g.:
         // runner::run_and_capture(&root, &plan.actions).await?;
     }
