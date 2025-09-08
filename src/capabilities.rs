@@ -125,9 +125,14 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
 /// A short text the planner sees as capabilities preamble.
 pub fn system_preamble(manifest: &Manifest) -> String {
     let t = &manifest.tools;
-    let mut lines = vec![
-        "You can propose file reads, edits and deletions and also request actions to run tools.\nEnabled tools:"
-            .to_string(),
+    let mut lines: Vec<String> = vec![
+        "A file index listing project files is provided for a birds-eye view.".into(),
+        "Use the `fs` capability for file operations:".into(),
+        "- add paths to `read` to view file contents".into(),
+        "- provide {path,intent} entries in `edit` to modify files".into(),
+        "- list paths in `delete` to remove them".into(),
+        "".into(),
+        "You can also request actions to run other tools.\nEnabled tools:".into(),
     ];
     let mut add = |name: &str, ok: bool| {
         if ok {
