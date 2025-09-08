@@ -1,19 +1,26 @@
 {
-  "default_model": "gpt-4o-mini",
+  "default_model": "llama-3.1-8b-instant",
   "models": [
     {
-      "id": "gpt-4o-mini",
-      "provider": "openai",
-      "api_key_env": "OPENAI_API_KEY",
+      "id": "openai/gpt-oss-120b",
+      "provider": "groq",
+      "api_key_env": "GROQ_API_KEY",
       "has_tools": true,
-      "specialty": "general coding"
+      "specialty": "reasoning"
     },
     {
       "id": "llama-3.3-70b-versatile",
       "provider": "groq",
       "api_key_env": "GROQ_API_KEY",
-      "has_tools": false,
-      "specialty": "reasoning"
+      "has_tools": true,
+      "specialty": "versatile"
+    },
+    {
+      "id": "llama-3.1-8b-instant",
+      "provider": "groq",
+      "api_key_env": "GROQ_API_KEY",
+      "has_tools": true,
+      "specialty": "chat"
     }
   ]
 }

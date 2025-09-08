@@ -52,3 +52,4 @@ lcov.info
 *.env
 .agent.env
 llm_config.toml
+models.json
