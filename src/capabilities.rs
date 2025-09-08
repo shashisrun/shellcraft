@@ -14,6 +14,7 @@ pub struct Providers {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Tools {
+    pub fs: bool,
     pub cargo: bool,
     pub npm: bool,
     pub pnpm: bool,
@@ -70,6 +71,7 @@ pub fn build_manifest(_root: &Path) -> Manifest {
             base_url,
         },
         tools: Tools {
+            fs: true,
             cargo: which("cargo").is_ok(),
             npm: which("npm").is_ok(),
             pnpm: which("pnpm").is_ok(),
@@ -121,7 +123,7 @@ pub fn can_run(manifest: &Manifest, program: &str) -> (bool, Option<String>) {
 pub fn system_preamble(manifest: &Manifest) -> String {
     let t = &manifest.tools;
     let mut lines = vec![
-        "You can propose file edits and deletions and also request actions to run tools.\nEnabled tools:"
+        "You can propose file reads, edits and deletions and also request actions to run tools.\nEnabled tools:"
             .to_string(),
     ];
     let mut add = |name: &str, ok: bool| {
@@ -129,6 +131,7 @@ pub fn system_preamble(manifest: &Manifest) -> String {
             lines.push(format!("- {}", name));
         }
     };
+    add("fs", t.fs);
     add("cargo", t.cargo);
     add("npm", t.npm);
     add("pnpm", t.pnpm);
