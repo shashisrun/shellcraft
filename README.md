@@ -9,7 +9,8 @@ worker agents as needed.
 
 Available models live in `models.json`. Each entry specifies the provider
 and an environment variable that holds the API key. A default model is used
-when `MODEL_ID` is not set.
+when `MODEL_ID` is not set. If a model supports tool calling, it can list the
+available tools in a `tools` array.
 
 Example `models.json`:
 ```json
@@ -20,7 +21,7 @@ Example `models.json`:
       "id": "gpt-4o-mini",
       "provider": "openai",
       "api_key_env": "OPENAI_API_KEY",
-      "has_tools": true,
+      "tools": ["code_interpreter"],
       "specialty": "general coding"
     }
   ]
